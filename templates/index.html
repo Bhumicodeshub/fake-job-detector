@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fake Job Posting Detector</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Fake Job Posting Detector</h1>
+        <p>Paste a job posting below to check if it looks real or fake.</p>
+
+        <form method="POST">
+            <textarea name="job_text" rows="10" placeholder="Paste the job title, description, requirements..." required></textarea>
+            <button type="submit">Check Posting</button>
+        </form>
+
+        {% if result %}
+        <div class="result {{ 'fake' if result == 'FAKE' else 'real' }}">
+            <h2>This posting looks: {{ result }}</h2>
+            <p>Confidence: {{ confidence }}%</p>
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>
