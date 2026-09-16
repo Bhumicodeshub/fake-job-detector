@@ -4,10 +4,9 @@ import time
 
 st.set_page_config(page_title="Fake Job Posting Detector", page_icon="🔍", layout="centered")
 
-# Custom styling
 st.markdown("""
 <style>
-.main {
+.stApp {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 .block-container {
@@ -16,13 +15,19 @@ st.markdown("""
     padding: 2.5rem;
     box-shadow: 0 20px 50px rgba(0,0,0,0.2);
     margin-top: 2rem;
+    max-width: 700px;
 }
-h1 {
-    color: #2c3e50;
+h1, .stMarkdown p, label, .stCaption {
+    color: #2c3e50 !important;
+}
+.stTextInput input, .stTextArea textarea {
+    background-color: #f4f6f8 !important;
+    color: #2c3e50 !important;
+    border: 1px solid #ccc !important;
 }
 .stButton>button {
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    color: white !important;
     font-weight: 600;
     border: none;
     border-radius: 10px;
@@ -47,12 +52,10 @@ with col1:
 with col2:
     company = st.text_input("Company Name", placeholder="e.g. Acme Corp")
 
-description = st.text_area("Job Description", height=180, placeholder="Paste the full job description here...")
-requirements = st.text_area("Requirements (optional)", height=100, placeholder="Skills, experience, qualifications...")
-benefits = st.text_area("Benefits (optional)", height=100, placeholder="Salary, perks, benefits offered...")
+description = st.text_area("Job Description", height=220, placeholder="Paste the full job description here...")
 
 if st.button("🔎 Analyze Posting"):
-    combined_text = f"{title} {company} {description} {requirements} {benefits}"
+    combined_text = f"{title} {company} {description}"
 
     if combined_text.strip() == "":
         st.warning("Please fill in at least the job title and description.")
@@ -66,11 +69,11 @@ if st.button("🔎 Analyze Posting"):
 
         st.markdown("---")
         if prediction == 1:
-            st.error(f"### ⚠️ This posting looks **FAKE**")
+            st.error("### ⚠️ This posting looks **FAKE**")
             st.progress(int(confidence))
             st.write(f"**Confidence: {confidence}%**")
             st.caption("Watch out for: vague company details, unrealistic pay, requests for personal/bank info, urgency language, generic email domains.")
         else:
-            st.success(f"### ✅ This posting looks **REAL**")
+            st.success("### ✅ This posting looks **REAL**")
             st.progress(int(confidence))
             st.write(f"**Confidence: {confidence}%**")
