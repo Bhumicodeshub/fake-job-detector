@@ -1,0 +1,9 @@
+{
+  "model_name": "Linear SVM (calibrated)",
+  "training_accuracy": 99.92,
+  "validation_accuracy": 99.03,
+  "test_accuracy": 98.77,
+  "test_precision_fake": 0.962,
+  "test_recall_fake": 0.777,
+  "test_f1_fake": 0.86
+}
