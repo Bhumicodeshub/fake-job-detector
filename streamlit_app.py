@@ -4,6 +4,7 @@ import json
 import re
 import time
 from html import escape
+from urllib.parse import quote_plus
 
 st.set_page_config(page_title="Fake Job Posting Detector", page_icon="🔍", layout="centered")
 
@@ -222,6 +223,59 @@ def flags_card(flags):
     return f'<div style="{CARD}margin-top:16px;">{header}{count}{rows}</div>'
 
 
+FREE_EMAIL_DOMAINS = {
+    "gmail.com", "yahoo.com", "yahoo.in", "yahoo.co.in", "hotmail.com", "outlook.com",
+    "live.com", "rediffmail.com", "aol.com", "proton.me", "protonmail.com",
+}
+
+SKIP_WORDS = {
+    "the", "and", "pvt", "ltd", "limited", "private", "inc", "llc", "corp", "corporation",
+    "company", "technologies", "technology", "solutions", "services", "systems", "group",
+    "india", "global", "international", "enterprises",
+}
+
+
+def email_flag(email, company):
+    email = email.strip().lower()
+    if "@" not in email:
+        return None
+    domain = email.split("@")[-1]
+    if domain in FREE_EMAIL_DOMAINS:
+        return (
+            "Unofficial recruiter email",
+            "Real companies usually email from their own domain, not from a free email service.",
+            [domain],
+        )
+    words = [w for w in re.findall(r"[a-z0-9]+", company.lower()) if len(w) >= 3 and w not in SKIP_WORDS]
+    cleaned_domain = re.sub(r"[^a-z0-9]", "", domain)
+    if words and not any(w in cleaned_domain for w in words):
+        return (
+            "Email domain does not match the company",
+            "The email domain does not contain the company name. Check that it really belongs to the company.",
+            [domain],
+        )
+    return None
+
+
+def verify_card(company):
+    q = quote_plus(company)
+    links = [
+        ("Search reviews and scam reports", f"https://www.google.com/search?q={q}+reviews+scam"),
+        ("Find the company on LinkedIn", f"https://www.linkedin.com/search/results/companies/?keywords={q}"),
+        ("Find its official website", f"https://www.google.com/search?q={q}+official+website"),
+    ]
+    buttons = "".join(
+        f'<a href="{url}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#eff6ff;color:#1d4ed8;font-size:14px;font-weight:600;padding:9px 14px;border-radius:10px;text-decoration:none;margin:8px 8px 0 0;border:1px solid #dbeafe;">{label}</a>'
+        for label, url in links
+    )
+    return (
+        f'<div style="{CARD}margin-top:16px;">'
+        f'<div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:6px;">Verify the company yourself</div>'
+        f'<div style="font-size:14px;color:#64748b;line-height:1.6;">This tool reads the text of a posting. It cannot check whether a company really exists, so a genuine-looking description from a fake company can still pass. These quick searches help you check.</div>'
+        f'<div>{buttons}</div></div>'
+    )
+
+
 html("""
 <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 100%);border-radius:18px;padding:36px 38px;margin-bottom:24px;">
 <div style="display:inline-block;background:rgba(255,255,255,0.12);color:#bfdbfe;font-size:12px;font-weight:600;letter-spacing:0.08em;padding:6px 14px;border-radius:999px;margin-bottom:16px;">MACHINE LEARNING · TEXT CLASSIFICATION</div>
@@ -241,10 +295,25 @@ with tab_detect:
 
     description = st.text_area("Job description", height=220, placeholder="Paste the full job description here (at least 30 words)...")
 
+    email = st.text_input("Recruiter email (optional)", placeholder="e.g. hr@acmecorp.com")
+
+    o1, o2, o3 = st.columns(3)
+    with o1:
+        company_profile = st.text_area("Company profile (optional)", height=130, placeholder="About the company...")
+    with o2:
+        requirements = st.text_area("Requirements (optional)", height=130, placeholder="Skills and experience needed...")
+    with o3:
+        benefits = st.text_area("Benefits (optional)", height=130, placeholder="Salary and perks offered...")
+
+    html("""
+    <div style="color:#64748b;font-size:13px;margin:4px 0 12px 0;">The job description matters most. Everything marked optional only adds extra detail.</div>
+    """)
+
     analyze = st.button("Analyze posting")
 
     if analyze:
-        if len(description.split()) < 30:
+        full_text = f"{company_profile} {description} {requirements} {benefits}"
+        if len(full_text.split()) < 30:
             html("""
             <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin-top:16px;color:#92400e;font-size:15px;line-height:1.6;">
             <b>More detail needed.</b> Please paste the full job description (at least 30 words). A name or a few words is not enough for the model to judge.
@@ -253,7 +322,7 @@ with tab_detect:
         else:
             with st.spinner("Analyzing posting..."):
                 time.sleep(0.8)
-                combined_text = f"{title} {company} {description}"
+                combined_text = " ".join([title, company_profile, description, requirements, benefits])
                 vec = vectorizer.transform([combined_text])
                 prediction = model.predict(vec)[0]
                 proba = model.predict_proba(vec)[0]
@@ -289,15 +358,21 @@ with tab_detect:
             """)
 
             flags = find_red_flags(combined_text)
+            mail_flag = email_flag(email, company)
+            if mail_flag:
+                flags.append(mail_flag)
 
-            if prediction == 0 and len(flags) >= 2:
+            if prediction == 0 and (len(flags) >= 2 or mail_flag):
                 html(f"""
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin-top:16px;color:#92400e;font-size:15px;line-height:1.6;">
-                <b>Be careful.</b> The model rates this posting as real, but {len(flags)} common scam warning signs were found in the text. Verify the company before you go further.
+                <b>Be careful.</b> The model rates this posting as real, but {len(flags)} common scam warning sign(s) were found. Verify the company before you go further.
                 </div>
                 """)
 
             html(flags_card(flags))
+
+            if company.strip():
+                html(verify_card(company.strip()))
 
             html("""
             <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:22px 24px;margin-top:16px;">
@@ -360,9 +435,9 @@ with tab_perf:
 with tab_about:
     recall_pct = round(metrics["test_recall_fake"] * 100)
     steps = [
-        ("1", "Text to numbers", "The title, company and description are combined and converted into TF-IDF features, which measure how important each word and word pair is."),
+        ("1", "Text to numbers", "The job title, company profile, description, requirements and benefits are combined and converted into TF-IDF features, which measure how important each word and word pair is."),
         ("2", "Classification", "A calibrated Linear SVM classifier compares those features with patterns learned from thousands of real and fake postings."),
-        ("3", "Probability", "The classifier outputs the probability that the posting is real or fake, shown as the verdict and risk level. A separate rule-based scan also lists common scam phrases found in the text."),
+        ("3", "Probability", "The classifier outputs the probability that the posting is real or fake, shown as the verdict and risk level. A separate rule-based scan also lists common scam phrases and checks the recruiter email."),
     ]
     cards = "".join(
         f'<div style="{CARD}flex:1 1 260px;">'
@@ -379,6 +454,6 @@ with tab_about:
     </div>
     <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:22px 24px;">
     <div style="font-size:16px;font-weight:700;color:#92400e;margin-bottom:10px;">Limitations</div>
-    <div style="font-size:15px;color:#92400e;line-height:1.7;">This tool gives an estimate, not a guarantee. On the test set it caught about {recall_pct}% of fake postings, so some scams can still look real to it. Always verify a company independently before sharing personal or payment details.</div>
+    <div style="font-size:15px;color:#92400e;line-height:1.7;">This tool gives an estimate, not a guarantee. On the test set it caught about {recall_pct}% of fake postings, so some scams can still look real to it. It only reads the text, so it cannot confirm that a company exists, and a copied genuine description can fool it. Always verify a company independently before sharing personal or payment details.</div>
     </div>
     """)
