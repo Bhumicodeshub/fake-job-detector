@@ -148,21 +148,23 @@ RED_FLAGS = [
         ],
     ),
     (
-        "Asks for bank or ID details",
+        "Asks for bank, ID or personal details",
         "Banking and ID details are only needed after a formal offer, never at the start.",
         [
             r"\bbank\s+(?:account|details)\b",
             r"\b(?:debit|credit)\s+card\b",
             r"\b(?:aadhaar|aadhar|passport|ssn|social\s+security|otp)\b",
+            r"\bsend\s+(?:your\s+)?(?:personal\s+)?(?:details|documents?)\b",
         ],
     ),
     (
         "Unrealistic pay or effortless work",
         "Very high pay for little work or no skills is a classic scam pattern.",
         [
-            r"\bearn\s+(?:up\s+to\s+)?[$₹]?\s?\d[\d,]*\s*(?:dollars|usd|rupees|rs|inr)?\s*(?:per|a|every)?\s*(?:day|week|weekly|daily|month)\b",
-            r"\bno\s+(?:experience|qualification|skills?)\s+(?:needed|required|necessary)\b",
-            r"\bguaranteed\s+(?:income|salary|job|placement)\b",
+            r"\bearn\s+(?:up\s+to\s+)?[$₹]?\s?\d[\d,]*(?:\s*(?:to|-|–)\s*[$₹]?\s?\d[\d,]*)?\s*(?:dollars|usd|rupees|rs|inr)?\s*(?:per|a|every)?\s*(?:day|week|weekly|daily|month|monthly)\b",
+            r"\bno\s+(?:experience|qualifications?|skills?)(?:\s+or\s+(?:special\s+)?(?:experience|qualifications?|skills?))?\s+(?:is\s+|are\s+)?(?:needed|required|necessary)\b",
+            r"\bguaranteed\s+(?:income|salary|job|placement|selection|offer|hiring)\b",
+            r"\b(?:just|only)\s+(?:\d+|one|two|three|four)\s+hours?\s+(?:a\s+day|per\s+day|daily)\b",
             r"\beasy\s+money\b",
         ],
     ),
@@ -182,6 +184,7 @@ RED_FLAGS = [
             r"\burgent(?:ly)?\b",
             r"\bimmediate(?:ly)?\s+(?:joining|start|hiring)\b",
             r"\blimited\s+(?:seats|vacancies|positions|slots)\b",
+            r"\bsecure\s+(?:your|their|the)\s+(?:position|seat|spot|slot|future)\b",
             r"\bhurry\b",
         ],
     ),
@@ -329,18 +332,34 @@ with tab_detect:
                 p_real = float(proba[0]) * 100
                 p_fake = float(proba[1]) * 100
 
+            flags = find_red_flags(combined_text)
+            mail_flag = email_flag(email, company)
+            if mail_flag:
+                flags.append(mail_flag)
+            n_flags = len(flags)
+
             if prediction == 1:
                 bg, border, color = "#fef2f2", "#fecaca", "#b91c1c"
                 headline = "Likely FAKE"
                 message = "This posting shows patterns commonly found in fraudulent job ads. Do not share personal or payment details."
+            elif n_flags >= 3:
+                bg, border, color = "#fef2f2", "#fecaca", "#b91c1c"
+                headline = "Suspicious posting"
+                message = f"The text model rates this posting as real, but {n_flags} scam warning signs were found. Treat it as high risk and verify everything before sharing any details or money."
             else:
                 bg, border, color = "#f0fdf4", "#bbf7d0", "#15803d"
                 headline = "Likely REAL"
                 message = "This posting looks consistent with genuine job ads. It is still worth verifying the company yourself."
 
-            if p_fake >= 70:
+            level = 2 if p_fake >= 70 else 1 if p_fake >= 30 else 0
+            if n_flags >= 3:
+                level = 2
+            elif n_flags >= 2 or mail_flag:
+                level = max(level, 1)
+
+            if level == 2:
                 risk, risk_color, risk_bg = "High risk", "#b91c1c", "#fee2e2"
-            elif p_fake >= 30:
+            elif level == 1:
                 risk, risk_color, risk_bg = "Medium risk", "#b45309", "#fef3c7"
             else:
                 risk, risk_color, risk_bg = "Low risk", "#15803d", "#dcfce7"
@@ -351,21 +370,16 @@ with tab_detect:
             <div style="font-size:24px;font-weight:700;color:{color};">{headline}</div>
             <div style="background:{risk_bg};color:{risk_color};font-size:13px;font-weight:700;padding:6px 14px;border-radius:999px;">{risk}</div>
             </div>
-            {prob_bar("Probability real", p_real, "#16a34a")}
-            {prob_bar("Probability fake", p_fake, "#dc2626")}
+            {prob_bar("Text model: probability real", p_real, "#16a34a")}
+            {prob_bar("Text model: probability fake", p_fake, "#dc2626")}
             <div style="font-size:15px;color:#475569;line-height:1.6;margin-top:6px;">{message}</div>
             </div>
             """)
 
-            flags = find_red_flags(combined_text)
-            mail_flag = email_flag(email, company)
-            if mail_flag:
-                flags.append(mail_flag)
-
-            if prediction == 0 and (len(flags) >= 2 or mail_flag):
+            if prediction == 0 and n_flags < 3 and (n_flags >= 2 or mail_flag):
                 html(f"""
                 <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:16px 20px;margin-top:16px;color:#92400e;font-size:15px;line-height:1.6;">
-                <b>Be careful.</b> The model rates this posting as real, but {len(flags)} common scam warning sign(s) were found. Verify the company before you go further.
+                <b>Be careful.</b> The model rates this posting as real, but {n_flags} common scam warning sign(s) were found. Verify the company before you go further.
                 </div>
                 """)
 
@@ -437,7 +451,7 @@ with tab_about:
     steps = [
         ("1", "Text to numbers", "The job title, company profile, description, requirements and benefits are combined and converted into TF-IDF features, which measure how important each word and word pair is."),
         ("2", "Classification", "A calibrated Linear SVM classifier compares those features with patterns learned from thousands of real and fake postings."),
-        ("3", "Probability", "The classifier outputs the probability that the posting is real or fake, shown as the verdict and risk level. A separate rule-based scan also lists common scam phrases and checks the recruiter email."),
+        ("3", "Probability", "The classifier outputs the probability that the posting is real or fake, shown as the verdict and risk level. A separate rule-based scan also lists common scam phrases, checks the recruiter email and raises the risk level when several warning signs are found."),
     ]
     cards = "".join(
         f'<div style="{CARD}flex:1 1 260px;">'
