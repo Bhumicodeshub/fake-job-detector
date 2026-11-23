@@ -1,8 +1,8 @@
 # Fake Job Posting Detector
 
 A machine-learning web app that estimates whether a job posting is genuine or a scam. It combines a Linear SVM text classifier with a rule-based red flag scan and a recruiter email check.
-**Live demo:**
- https://fake-job-detector-f7c4dqmurkcjavbqgcxbul.streamlit.app/
+
+**Live demo:** https://fake-job-detector-f7c4dqmurkcjavbqgcxbul.streamlit.app/
 
 ## Features
 
